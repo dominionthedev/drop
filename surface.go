@@ -63,11 +63,6 @@ func (s *Surface) Clear(style Style) {
 // already separate elements in CellsForString's output, so this needs
 // no special-casing for them.
 //
-// Before every write, clearPairAt enforces the write invariant from R5:
-// whatever wide-cell pair currently overlaps the column being written
-// is cleared back to blank first, so overwriting one half of an
-// existing wide cell never leaves a stray orphaned half on screen.
-//
 // Writing stops cleanly at the surface's right edge — content that
 // doesn't fit is neither wrapped nor truncated mid-cluster. If a wide
 // cluster's second column would fall outside the surface, the whole
@@ -79,16 +74,35 @@ func (s *Surface) WriteString(row, col int, str string, style Style) {
 	}
 	pen := col
 	for _, c := range CellsForString(str, style) {
-		if pen < 0 || pen >= s.width {
+		if !s.setCell(row, pen, c) {
 			return
 		}
-		if c.Width == 2 && pen+1 >= s.width {
-			return
-		}
-		s.clearPairAt(row, pen)
-		s.cells[s.index(row, pen)] = c
 		pen++
 	}
+}
+
+// setCell places an already-formed Cell at (row, col), enforcing the
+// same clear-before-overwrite invariant WriteString relies on. Unlike
+// WriteString, which derives Cells from a string via CellsForString,
+// this takes a Cell as-is — including a continuation placeholder
+// (Width == 0, Content == "") — which CellsForString would otherwise
+// silently drop. This is what lets Screen composition (blit) copy an
+// already-segmented wide-cell pair from one Surface to another intact.
+//
+// Reports false, and writes nothing, if (row, col) is out of bounds, or
+// if c is a wide cell whose continuation column would fall outside the
+// surface.
+func (s *Surface) setCell(row, col int, c Cell) bool {
+	i := s.index(row, col)
+	if i < 0 {
+		return false
+	}
+	if c.Width == 2 && s.index(row, col+1) < 0 {
+		return false
+	}
+	s.clearPairAt(row, col)
+	s.cells[i] = c
+	return true
 }
 
 // clearPairAt clears the wide-cell pair overlapping (row, col) back to
