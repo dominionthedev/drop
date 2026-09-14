@@ -40,6 +40,31 @@ func NewScreen(width, height int) *Screen {
 func (s *Screen) Width() int  { return s.width }
 func (s *Screen) Height() int { return s.height }
 
+// Resize updates the Screen's own dimensions in response to a terminal
+// resize (SPEC.md R14). It takes plain ints rather than leak's
+// event.ResizeEvent, matching R3's dependency direction — the host
+// reads the resize event from leak.ReadEvent() and relays the two
+// numbers here; drop never needs to import leak's event package for
+// this. Negative dimensions are clamped to 0, matching NewScreen.
+//
+// Existing layers are untouched: their surfaces, positions, and z
+// order all stay exactly as they were. The new size only takes effect
+// on the next Resolve, whose output Surface is sized to it and whose
+// existing clipping in blit already handles a layer that's now larger
+// or smaller than the screen than it was before. Repositioning a
+// layer to fit a new size (a sidebar recalculating its x, for example)
+// is layout's job (R9), not Screen's.
+func (s *Screen) Resize(width, height int) {
+	if width < 0 {
+		width = 0
+	}
+	if height < 0 {
+		height = 0
+	}
+	s.width = width
+	s.height = height
+}
+
 // AddLayer composes surface into the Screen at (x, y), painted at order
 // z — a higher z paints later, i.e. on top of lower-z layers where they
 // overlap. name identifies the layer for later lookup with SetVisible or

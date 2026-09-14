@@ -161,3 +161,59 @@ func TestAddLayerReplacesExistingName(t *testing.T) {
 		t.Fatalf("got %d layers, want 1 (replace, not stack)", n)
 	}
 }
+
+func TestResizeGrowsCanvasAndKeepsLayers(t *testing.T) {
+	scr := NewScreen(3, 1)
+	surf := NewSurface(3, 1)
+	surf.WriteString(0, 0, "abc", Style{})
+	scr.AddLayer("main", surf, 0, 0, 0)
+
+	scr.Resize(5, 1)
+	if scr.Width() != 5 || scr.Height() != 1 {
+		t.Fatalf("got %dx%d, want 5x1", scr.Width(), scr.Height())
+	}
+
+	out := scr.Resolve()
+	if got := rowString(out, 0); got != "abc  " {
+		t.Fatalf("got %q, want %q — existing layer content preserved on grow", got, "abc  ")
+	}
+}
+
+func TestResizeShrinksCanvasAndClips(t *testing.T) {
+	scr := NewScreen(5, 1)
+	surf := NewSurface(5, 1)
+	surf.WriteString(0, 0, "abcde", Style{})
+	scr.AddLayer("main", surf, 0, 0, 0)
+
+	scr.Resize(3, 1)
+	out := scr.Resolve()
+	if out.Width() != 3 {
+		t.Fatalf("Resolve output width = %d, want 3", out.Width())
+	}
+	if got := rowString(out, 0); got != "abc" {
+		t.Fatalf("got %q, want %q — clipped to the new smaller size", got, "abc")
+	}
+}
+
+func TestResizeClampsNegativeDimensions(t *testing.T) {
+	scr := NewScreen(5, 5)
+	scr.Resize(-1, -10)
+	if scr.Width() != 0 || scr.Height() != 0 {
+		t.Fatalf("got %dx%d, want 0x0", scr.Width(), scr.Height())
+	}
+}
+
+func TestResizeDoesNotTouchLayers(t *testing.T) {
+	scr := NewScreen(3, 1)
+	surf := NewSurface(3, 1)
+	surf.WriteString(0, 0, "abc", Style{})
+	scr.AddLayer("main", surf, 0, 0, 0)
+
+	scr.Resize(1, 1) // shrink...
+	scr.Resize(3, 1) // ...then grow back
+
+	out := scr.Resolve()
+	if got := rowString(out, 0); got != "abc" {
+		t.Fatalf("got %q, want %q — layer survives a shrink-then-grow round trip unchanged", got, "abc")
+	}
+}
